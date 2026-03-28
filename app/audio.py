@@ -65,10 +65,15 @@ def create_glitch(
     num_parts: int,
     snippet_ms: int,
     shuffle: bool = False,
+    target_ms: int = 30000,
 ) -> AudioSegment:
-    """Split audio into parts, extract a snippet from each, optionally shuffle."""
-    if len(audio) < 1000:
-        raise ValueError("Audio is too short to process (< 1 second).")
+    """Split audio into parts, extract a snippet from each, optionally shuffle.
+
+    If the snippets don't fill *target_ms*, they are looped until the target
+    duration is reached.
+    """
+    if len(audio) < 100:
+        raise ValueError("Audio is too short to process.")
 
     part_duration_ms = len(audio) // num_parts
     snippets: list[AudioSegment] = []
@@ -87,7 +92,11 @@ def create_glitch(
     if shuffle:
         random.shuffle(snippets)
 
-    result = snippets[0]
-    for snippet in snippets[1:]:
-        result += snippet
-    return result
+    # Concatenate, looping snippets until target duration is reached
+    result = AudioSegment.empty()
+    idx = 0
+    while len(result) < target_ms and snippets:
+        result += snippets[idx % len(snippets)]
+        idx += 1
+
+    return result[:target_ms]

@@ -26,6 +26,8 @@ YOUTUBE_RE = re.compile(
 
 DEFAULT_URL = "https://www.youtube.com/watch?v=LX1ywBDk1aE"
 
+TARGET_DURATION_MS = 30000
+
 ACCENT = "#00ffcc"
 ACCENT_HOVER = "#00cc99"
 SURFACE = "#333333"
@@ -40,7 +42,7 @@ class GlitchtubeApp(ctk.CTk):
         super().__init__()
 
         self.title("Glitchtube")
-        self.geometry("560x540")
+        self.geometry("560x490")
         self.resizable(False, False)
 
         ctk.set_appearance_mode("dark")
@@ -135,31 +137,6 @@ class GlitchtubeApp(ctk.CTk):
         # ── Editor ──
 
         self.editor_frame = ctk.CTkFrame(self, fg_color="transparent")
-
-        # Segments slider
-        seg_row = ctk.CTkFrame(self.editor_frame, fg_color="transparent")
-        seg_row.pack(fill="x", pady=(0, 6))
-        seg_row.grid_columnconfigure(1, weight=1)
-
-        ctk.CTkLabel(
-            seg_row, text="Segments", font=ctk.CTkFont(size=12),
-            text_color=TEXT_MUTED,
-        ).grid(row=0, column=0, padx=(0, 8))
-
-        self.seg_val = ctk.CTkLabel(
-            seg_row, text="50", font=ctk.CTkFont(size=12, weight="bold"),
-            text_color=ACCENT, width=36,
-        )
-        self.seg_val.grid(row=0, column=2, padx=(8, 0))
-
-        self.seg_slider = ctk.CTkSlider(
-            seg_row, from_=2, to=200, number_of_steps=198, height=16,
-            progress_color=ACCENT, button_color=ACCENT,
-            button_hover_color=ACCENT_HOVER,
-            command=self._on_param_change,
-        )
-        self.seg_slider.grid(row=0, column=1, sticky="ew")
-        self.seg_slider.set(50)
 
         # Snippet slider
         snip_row = ctk.CTkFrame(self.editor_frame, fg_color="transparent")
@@ -363,24 +340,17 @@ class GlitchtubeApp(ctk.CTk):
         self._show_state("editor")
         self._on_param_change()  # update labels + trigger initial processing
 
+    def _calc_segments(self, snip_ms: int) -> int:
+        return max(1, TARGET_DURATION_MS // snip_ms)
+
     def _on_param_change(self, _value=None):
-        num = int(self.seg_slider.get())
         snip_ms = int(round(self.snip_slider.get() / 30) * 30)
-        self.seg_val.configure(text=str(num))
         self.snip_val.configure(text=f"{snip_ms}ms")
 
+        num = self._calc_segments(snip_ms)
         total = num * snip_ms / 1000
-        if total > self._source_duration_s:
-            self.info_label.configure(
-                text=f"{self._fmt(total)} > {self._fmt(self._source_duration_s)}",
-                text_color=ERROR,
-            )
-            self.play_btn.configure(state="disabled")
-            self.save_btn.configure(state="disabled")
-            return
-
         self.info_label.configure(
-            text=f"{self._fmt(total)} of {self._fmt(self._source_duration_s)}",
+            text=f"{num} segments \u00b7 {self._fmt(total)}",
             text_color=TEXT_MUTED,
         )
 
@@ -394,13 +364,12 @@ class GlitchtubeApp(ctk.CTk):
         if self._processing or not self._source_audio:
             return
 
-        num = int(self.seg_slider.get())
         snip_ms = int(round(self.snip_slider.get() / 30) * 30)
+        num = self._calc_segments(snip_ms)
         shuf = self.shuffle_var.get()
 
-        if num * snip_ms / 1000 > self._source_duration_s:
-            return
-
+        self._resume_after_reprocess = self._is_playing
+        self._resume_offset = self._current_pos() if self._is_playing else 0.0
         self._stop_playback()
         self.info_label.configure(text="Processing...", text_color=TEXT_MUTED)
         self.play_btn.configure(state="disabled")
@@ -414,7 +383,10 @@ class GlitchtubeApp(ctk.CTk):
 
     def _reprocess_thread(self, num: int, snip_ms: int, shuf: bool):
         try:
-            result = create_glitch(self._source_audio, num, snip_ms, shuffle=shuf)
+            result = create_glitch(
+                self._source_audio, num, snip_ms,
+                shuffle=shuf, target_ms=TARGET_DURATION_MS,
+            )
             out = self._output_dir / "glitch.mp3"
             result.export(str(out), format="mp3", bitrate="320k")
             self._current_output_path = out
@@ -436,10 +408,11 @@ class GlitchtubeApp(ctk.CTk):
             )
             return
 
-        num = int(self.seg_slider.get())
         snip_ms = int(round(self.snip_slider.get() / 30) * 30)
+        num = self._calc_segments(snip_ms)
+        total = num * snip_ms / 1000
         self.info_label.configure(
-            text=f"{self._fmt(num * snip_ms / 1000)} of {self._fmt(self._source_duration_s)}",
+            text=f"{num} segments \u00b7 {self._fmt(total)}",
             text_color=TEXT_MUTED,
         )
         self.play_btn.configure(state="normal")
@@ -447,6 +420,10 @@ class GlitchtubeApp(ctk.CTk):
         self.time_tot.configure(text=self._fmt(self._audio_duration))
         self.scrub_slider.set(0)
         self.time_cur.configure(text="0:00")
+
+        if self._resume_after_reprocess:
+            offset = min(self._resume_offset, self._audio_duration)
+            self._play_from(offset)
 
     # ── Playback ──────────────────────────────────────────────────────────
 
@@ -574,9 +551,7 @@ class GlitchtubeApp(ctk.CTk):
         self._output_dir = None
         self.url_entry.delete(0, "end")
         self.url_entry.insert(0, DEFAULT_URL)
-        self.seg_slider.set(50)
         self.snip_slider.set(600)
-        self.seg_val.configure(text="50")
         self.snip_val.configure(text="600ms")
         self.shuffle_var.set(True)
         self._show_state("input")
