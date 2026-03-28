@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Glitchtube</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main>
+    <h1>Glitchtube</h1>
+    <p class="tagline">Extract the essence of any YouTube video in 30 seconds</p>
+
+    <section id="input-section">
+      <div class="input-group">
+        <input type="url" id="url-input" placeholder="Paste YouTube URL..." autocomplete="off">
+        <button id="submit-btn">Glitch It</button>
+      </div>
+      <p id="error-msg" class="error" hidden></p>
+    </section>
+
+    <section id="progress-section" hidden>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progress-fill"></div>
+      </div>
+      <p id="status-msg">Starting...</p>
+    </section>
+
+    <section id="result-section" hidden>
+      <audio id="audio-player" controls></audio>
+      <div class="result-actions">
+        <a id="download-btn" class="button" download>Download MP3</a>
+        <button id="reset-btn">Make Another</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
