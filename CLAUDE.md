@@ -13,7 +13,7 @@ A desktop app (CustomTkinter) that takes a YouTube URL, downloads its audio, spl
 pip install -r requirements.txt
 
 # Run the desktop GUI
-python gui.py
+python youtube-glitcher.py
 
 # System dependency: ffmpeg must be installed (used by pydub, yt-dlp, and ffplay for playback)
 ```
@@ -22,7 +22,7 @@ There are no tests, linter, or formatter configured.
 
 ## Architecture
 
-**GUI** — `gui.py` (entry point)
+**GUI** — `youtube-glitcher.py` (entry point)
 
 - CustomTkinter dark-themed window with three states: input → downloading → editor.
 - Editor allows live adjustment of segment count (2–200), snippet duration (1–10s), and shuffle toggle. Parameter changes trigger debounced re-processing (400ms).
