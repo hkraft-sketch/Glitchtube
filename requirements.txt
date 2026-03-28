@@ -1,6 +1,4 @@
-fastapi>=0.110,<1
-uvicorn[standard]>=0.29,<1
 yt-dlp>=2024.1
 pydub>=0.25
-python-multipart>=0.0.9
 pydantic-settings>=2.0
+customtkinter>=5.2
