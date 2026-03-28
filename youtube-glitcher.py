@@ -543,18 +543,27 @@ class GlitchtubeApp(ctk.CTk):
 
     def _reset(self):
         self._stop_playback()
+        # Cancel pending reprocess before clearing state
+        if self._reprocess_after_id:
+            self.after_cancel(self._reprocess_after_id)
+            self._reprocess_after_id = None
+        self._processing = False
         self._source_audio = None
         self._source_duration_s = 0.0
         self._current_output_path = None
         self._audio_duration = 0.0
         self.current_job_id = None
         self._output_dir = None
+        # Show input first so frame is visible immediately
+        self._show_state("input")
         self.url_entry.delete(0, "end")
         self.url_entry.insert(0, DEFAULT_URL)
+        # Reset sliders without triggering reprocess
+        self.snip_slider.configure(command=None)
         self.snip_slider.set(600)
+        self.snip_slider.configure(command=self._on_param_change)
         self.snip_val.configure(text="600ms")
         self.shuffle_var.set(True)
-        self._show_state("input")
 
     def _on_close(self):
         self._stop_playback()
