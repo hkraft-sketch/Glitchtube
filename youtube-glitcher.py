@@ -65,6 +65,9 @@ class GlitchtubeApp(ctk.CTk):
         self._playback_offset: float = 0.0
         self._user_scrubbing = False
 
+        # Download state
+        self._dl_cancelled = False
+
         # Reprocess state
         self._reprocess_after_id: str | None = None
         self._processing = False
@@ -133,6 +136,14 @@ class GlitchtubeApp(ctk.CTk):
             font=ctk.CTkFont(size=12), text_color=TEXT_MUTED,
         )
         self.dl_status.pack()
+
+        self.cancel_btn = ctk.CTkButton(
+            self.download_frame, text="Cancel", width=110, height=36,
+            font=ctk.CTkFont(size=13, weight="bold"),
+            fg_color=SURFACE, text_color=TEXT, hover_color="#444444",
+            command=self._cancel_download,
+        )
+        self.cancel_btn.pack(pady=(12, 0))
 
         # ── Editor ──
 
@@ -250,7 +261,18 @@ class GlitchtubeApp(ctk.CTk):
         )
         self.reset_btn.pack(side="left", padx=5)
 
+        # ── Status bar (always visible) ──
+
+        self.status_bar = ctk.CTkLabel(
+            self, text="Ready", font=ctk.CTkFont(size=11),
+            text_color=TEXT_MUTED, anchor="w",
+        )
+        self.status_bar.grid(row=3, column=0, padx=45, pady=(10, 12), sticky="ew")
+
         self._show_state("input")
+
+    def _set_status(self, text: str):
+        self.status_bar.configure(text=text)
 
     def _show_state(self, state: str):
         for f in (self.input_frame, self.download_frame, self.editor_frame):
@@ -277,6 +299,7 @@ class GlitchtubeApp(ctk.CTk):
 
         self.error_label.configure(text="")
         self.submit_btn.configure(state="disabled")
+        self._dl_cancelled = False
 
         job_id = uuid.uuid4().hex[:12]
         self.jobs[job_id] = JobState()
@@ -287,6 +310,7 @@ class GlitchtubeApp(ctk.CTk):
         self._show_state("downloading")
         self.dl_progress.set(0)
         self.dl_status.configure(text="Starting download...")
+        self._set_status("Downloading...")
 
         threading.Thread(
             target=self._dl_thread, args=(url, job_id), daemon=True,
@@ -297,8 +321,10 @@ class GlitchtubeApp(ctk.CTk):
         job = self.jobs[job_id]
         try:
             job.status = "downloading"
-            job.message = "Starting download..."
+            job.message = "Fetching video info..."
+            print(f"[dl] thread started: {job_id}")
             source_path = download_audio(url, self._output_dir, job)
+            print(f"[dl] download complete: {source_path}")
 
             job.message = "Loading audio..."
             job.progress = 95
@@ -307,28 +333,41 @@ class GlitchtubeApp(ctk.CTk):
             job.status = "done"
             job.progress = 100
             job.message = "Ready!"
+            print(f"[dl] audio loaded, done")
         except Exception as e:
-            logger.exception("Download failed for job %s", job_id)
+            print(f"[dl] ERROR: {e}")
             job.status = "error"
             job.error = str(e)
 
+    def _cancel_download(self):
+        self._dl_cancelled = True
+        self.submit_btn.configure(state="normal")
+        self._set_status("Download cancelled")
+        self._show_state("input")
+
     def _poll_download(self):
+        if self._dl_cancelled:
+            return
+
         job = self.jobs.get(self.current_job_id)
         if not job:
             return
 
         self.dl_progress.set(job.progress / 100)
         self.dl_status.configure(text=job.message or "Working...")
+        self._set_status(job.message or "Downloading...")
 
         if job.status == "done":
             self.submit_btn.configure(state="normal")
             self._source_duration_s = len(self._source_audio) / 1000
+            self._set_status(f"Loaded {self._fmt(self._source_duration_s)} of audio")
             self._enter_editor()
             return
 
         if job.status == "error":
             self.error_label.configure(text=job.error or "Download failed.")
             self.submit_btn.configure(state="normal")
+            self._set_status("Download failed")
             self._show_state("input")
             return
 
@@ -372,6 +411,7 @@ class GlitchtubeApp(ctk.CTk):
         self._resume_offset = self._current_pos() if self._is_playing else 0.0
         self._stop_playback()
         self.info_label.configure(text="Processing...", text_color=TEXT_MUTED)
+        self._set_status("Processing glitch audio...")
         self.play_btn.configure(state="disabled")
         self.save_btn.configure(state="disabled")
         self._processing = True
@@ -406,6 +446,7 @@ class GlitchtubeApp(ctk.CTk):
             self.info_label.configure(
                 text=f"Error: {self._reprocess_error}", text_color=ERROR,
             )
+            self._set_status(f"Error: {self._reprocess_error}")
             return
 
         snip_ms = int(round(self.snip_slider.get() / 30) * 30)
@@ -420,6 +461,7 @@ class GlitchtubeApp(ctk.CTk):
         self.time_tot.configure(text=self._fmt(self._audio_duration))
         self.scrub_slider.set(0)
         self.time_cur.configure(text="0:00")
+        self._set_status(f"Ready \u00b7 {num} segments \u00b7 {snip_ms}ms \u00b7 {self._fmt(total)}")
 
         if self._resume_after_reprocess:
             offset = min(self._resume_offset, self._audio_duration)
@@ -464,6 +506,7 @@ class GlitchtubeApp(ctk.CTk):
         self._is_playing = True
         self._is_paused = False
         self.play_btn.configure(text="\u23F8  Pause")
+        self._set_status("Playing")
         self._update_playback()
 
     def _toggle_playback(self):
@@ -476,6 +519,7 @@ class GlitchtubeApp(ctk.CTk):
             self._is_playing = False
             self._is_paused = True
             self.play_btn.configure(text="\u25B6  Play")
+            self._set_status("Paused")
             return
         self._play_from(0.0)
 
@@ -487,6 +531,7 @@ class GlitchtubeApp(ctk.CTk):
         self.play_btn.configure(text="\u25B6  Play")
         self.scrub_slider.set(0)
         self.time_cur.configure(text="0:00")
+        self._set_status("Stopped")
 
     def _update_playback(self):
         if not self._is_playing:
@@ -540,6 +585,7 @@ class GlitchtubeApp(ctk.CTk):
         )
         if dest:
             shutil.copy2(path, dest)
+            self._set_status(f"Saved to {Path(dest).name}")
 
     def _reset(self):
         self._stop_playback()
@@ -556,6 +602,7 @@ class GlitchtubeApp(ctk.CTk):
         self._output_dir = None
         # Show input first so frame is visible immediately
         self._show_state("input")
+        self.submit_btn.configure(state="normal")
         self.url_entry.delete(0, "end")
         self.url_entry.insert(0, DEFAULT_URL)
         # Reset sliders without triggering reprocess
@@ -564,6 +611,7 @@ class GlitchtubeApp(ctk.CTk):
         self.snip_slider.configure(command=self._on_param_change)
         self.snip_val.configure(text="600ms")
         self.shuffle_var.set(True)
+        self._set_status("Ready")
 
     def _on_close(self):
         self._stop_playback()

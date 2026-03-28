@@ -44,6 +44,7 @@ def download_audio(url: str, output_dir: Path, job: JobState) -> Path:
         ],
         "quiet": True,
         "no_warnings": True,
+        "noplaylist": True,
         "progress_hooks": [progress_hook],
     }
 
